@@ -3,27 +3,34 @@ pragma solidity ^0.8.24;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
-import {IEthUsdPrice} from "./VeyroHoodCampaign.sol";
+import {IEthUsdPrice} from "./IEthUsdPrice.sol";
 
-/// @notice Owner-posted ETH/USD session price for Robinhood Chain (no Chainlink feed).
+/// @title SessionEthUsdPrice
+/// @notice Admin-posted ETH/USD session price for Robinhood Chain mainnet.
+/// @dev Robinhood Chain has no Chainlink ETH/USD feed for this campaign.
+///      Ownership should be a multisig. A stale price freezes pay/withdraw.
 contract SessionEthUsdPrice is Ownable2Step, IEthUsdPrice {
     uint256 public price8;
     uint256 public updatedAt;
 
-    event PricePosted(uint256 price8, uint256 updatedAt);
+    event PricePosted(uint256 price8, uint256 updatedAt, address indexed poster);
+
+    error InvalidPrice();
+    error InvalidOwner();
 
     constructor(address owner_, uint256 initialPrice8) Ownable(owner_) {
-        require(initialPrice8 > 0, "price");
+        if (owner_ == address(0)) revert InvalidOwner();
+        if (initialPrice8 == 0) revert InvalidPrice();
         price8 = initialPrice8;
         updatedAt = block.timestamp;
-        emit PricePosted(initialPrice8, updatedAt);
+        emit PricePosted(initialPrice8, updatedAt, msg.sender);
     }
 
     function postPrice(uint256 newPrice8) external onlyOwner {
-        require(newPrice8 > 0, "price");
+        if (newPrice8 == 0) revert InvalidPrice();
         price8 = newPrice8;
         updatedAt = block.timestamp;
-        emit PricePosted(newPrice8, updatedAt);
+        emit PricePosted(newPrice8, updatedAt, msg.sender);
     }
 
     function ethUsd8() external view returns (uint256, uint256) {
