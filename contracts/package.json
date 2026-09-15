@@ -3,13 +3,11 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "compile": "hardhat compile",
+    "compile": "hardhat compile --show-stack-traces",
     "test": "hardhat test --network hardhat",
-    "deploy:mainnet": "hardhat run scripts/deploy.cjs --network robinhood",
-    "price:mainnet": "hardhat run scripts/postPrice.cjs --network robinhood"
+    "deploy:mainnet": "bash scripts/deploy-mainnet.sh"
   },
   "devDependencies": {
-    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@openzeppelin/contracts": "^5.1.0",
     "dotenv": "^16.4.5",
     "hardhat": "^2.22.17"

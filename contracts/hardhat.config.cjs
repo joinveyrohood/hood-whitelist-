@@ -1,7 +1,27 @@
-require("@nomicfoundation/hardhat-toolbox");
-require("dotenv").config();
+try {
+  require("dotenv").config();
+} catch (_) {}
+
+const { subtask } = require("hardhat/config");
+const {
+  TASK_COMPILE_SOLIDITY_GET_SOURCE_PATHS,
+} = require("hardhat/builtin-tasks/task-names");
 
 const PRIVATE_KEY = process.env.PRIVATE_KEY || "";
+
+subtask(TASK_COMPILE_SOLIDITY_GET_SOURCE_PATHS).setAction(async (_, __, runSuper) => {
+  const paths = await runSuper();
+  return paths.filter((p) => {
+    const n = p.replace(/\\/g, "/");
+    if (n.includes("/lib/")) return false;
+    if (n.includes("/forge-test/")) return false;
+    if (n.includes("/script/")) return false;
+    if (n.includes("/node_modules/")) return false;
+    if (n.includes("/out/")) return false;
+    if (n.includes("/cache/")) return false;
+    return n.endsWith(".sol");
+  });
+});
 
 module.exports = {
   solidity: {
@@ -24,20 +44,7 @@ module.exports = {
     sources: ".",
     tests: "./test",
     cache: "./cache",
-    artifacts: "./artifacts",
+    artifacts: "./hh-artifacts",
   },
-  mocha: { timeout: 120000 },
-  etherscan: {
-    apiKey: { robinhood: "empty" },
-    customChains: [
-      {
-        network: "robinhood",
-        chainId: 4663,
-        urls: {
-          apiURL: "https://robinhoodchain.blockscout.com/api",
-          browserURL: "https://robinhoodchain.blockscout.com",
-        },
-      },
-    ],
-  },
+  mocha: { timeout: 180000 },
 };

@@ -1,7 +1,9 @@
 node_modules
 cache
 artifacts
+hh-artifacts
 out
 lib
+broadcast
 .env
 .DS_Store
