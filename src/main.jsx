@@ -22,3 +22,8 @@ const NFT_SUPPLY = 10000;
 const VERIFICATION_USD = 0.25;
 const REFERRAL_PERCENT = 20;
 const WITHDRAWAL_USD = 2;
+
+function shortAddress(address) {
+  if (!address) return "";
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
