@@ -38,6 +38,11 @@ const VERIFICATION_USD = 0.25;
 const REFERRAL_PERCENT = 20;
 const WITHDRAWAL_USD = 2;
 
+const X_URL = "https://x.com/VeyroHood";
+const DISCORD_URL = "https://discord.gg/utFuXHYHp";
+const PINNED_POST =
+  "https://x.com/VeyroHood/status/2095434542094115048";
+
 function shortAddress(address) {
   if (!address) return "";
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
@@ -88,6 +93,9 @@ function App() {
 
   const [leaderboard, setLeaderboard] = useState([]);
 
+  const [mobileMenuOpen, setMobileMenuOpen] =
+    useState(false);
+
   const referralWallet = getReferralWallet();
 
   async function switchToRobinhood() {
@@ -111,6 +119,90 @@ function App() {
         method: "wallet_addEthereumChain",
         params: [CHAIN_CONFIG],
       });
+    }
+  }
+
+  async function saveUser(address) {
+    try {
+      const normalizedWallet =
+        address.toLowerCase();
+
+      const existing = await supabase
+        .from("users")
+        .select("*")
+        .eq(
+          "wallet_address",
+          normalizedWallet
+        )
+        .maybeSingle();
+
+      if (existing.error) {
+        console.error(existing.error);
+      }
+
+      if (existing.data) {
+        const data = existing.data;
+
+        setUser(data);
+        setReferralCount(
+          Number(data.referral_count || 0)
+        );
+        setReferralEarnings(
+          Number(data.referral_earnings || 0)
+        );
+        setXUsername(data.x_username || "");
+        setDiscordUsername(
+          data.discord_username || ""
+        );
+        setVerificationStatus(
+          data.verification_status || "pending"
+        );
+
+        return data;
+      }
+
+      const referrer =
+        referralWallet &&
+        referralWallet !== normalizedWallet
+          ? referralWallet
+          : null;
+
+      const inserted = await supabase
+        .from("users")
+        .insert({
+          wallet_address: normalizedWallet,
+          referrer_wallet: referrer,
+          is_og: false,
+          referral_count: 0,
+          referral_earnings: 0,
+          verification_status: "pending",
+        });
+
+      if (inserted.error) {
+        console.error(inserted.error);
+
+        setStatus(
+          "Wallet connected, but user registration failed."
+        );
+
+        return null;
+      }
+
+      setReferralCount(0);
+      setReferralEarnings(0);
+      setVerificationStatus("pending");
+
+      await loadUserData(normalizedWallet);
+
+      return true;
+    } catch (error) {
+      console.error(error);
+
+      setStatus(
+        "Could not save wallet information."
+      );
+
+      return null;
     }
   }
 
@@ -138,7 +230,8 @@ function App() {
         return;
       }
 
-      const address = accounts[0].toLowerCase();
+      const address =
+        accounts[0].toLowerCase();
 
       setWallet(address);
 
@@ -149,7 +242,12 @@ function App() {
 
       await saveUser(address);
 
-      setStatus("Wallet connected successfully.");
+      setStatus(
+        "Wallet connected successfully."
+      );
+
+      await loadStats();
+      await loadLeaderboard();
     } catch (error) {
       console.error(error);
 
@@ -160,130 +258,31 @@ function App() {
     } finally {
       setLoading(false);
     }
-          }
-    async function saveUser(address) {
-    try {
-      const normalizedWallet =
-        address.toLowerCase();
-
-      const existing =
-        await supabase
-          .from("users")
-          .select("*")
-          .eq(
-            "wallet_address",
-            normalizedWallet
-          )
-          .maybeSingle();
-
-      if (existing.error) {
-        console.error(existing.error);
-      }
-
-      if (existing.data) {
-        setUser(existing.data);
-
-        setReferralCount(
-          existing.data.referral_count || 0
-        );
-
-        setReferralEarnings(
-          Number(
-            existing.data.referral_earnings || 0
-          )
-        );
-
-        setXUsername(
-          existing.data.x_username || ""
-        );
-
-        setDiscordUsername(
-          existing.data.discord_username || ""
-        );
-
-        setVerificationStatus(
-          existing.data.verification_status ||
-            "pending"
-        );
-
-        return existing.data;
-      }
-
-      const referrer =
-        referralWallet &&
-        referralWallet !== normalizedWallet
-          ? referralWallet
-          : null;
-
-      const inserted =
-        await supabase
-          .from("users")
-          .insert({
-            wallet_address:
-              normalizedWallet,
-            referrer_wallet: referrer,
-            is_og: false,
-            referral_count: 0,
-            referral_earnings: 0,
-            verification_status:
-              "pending",
-          })
-          .select()
-          .single();
-
-      if (inserted.error) {
-        console.error(inserted.error);
-
-        setStatus(
-          "Wallet connected, but user registration failed."
-        );
-
-        return null;
-      }
-
-      setUser(inserted.data);
-
-      setReferralCount(0);
-      setReferralEarnings(0);
-
-      return inserted.data;
-    } catch (error) {
-      console.error(error);
-
-      setStatus(
-        "Could not save wallet information."
-      );
-
-      return null;
-    }
   }
 
   async function loadStats() {
     try {
-      const result =
-        await supabase
-          .from("users")
-          .select(
-            "is_og",
-            { count: "exact" }
-          );
+      const result = await supabase
+        .from("users")
+        .select("is_og", {
+          count: "exact",
+          head: false,
+        });
 
       if (result.error) {
         console.error(result.error);
         return;
       }
 
-      const joined =
-        result.count || 0;
+      const joined = result.count || 0;
 
-      const ogResult =
-        await supabase
-          .from("users")
-          .select(
-            "is_og",
-            { count: "exact" }
-          )
-          .eq("is_og", true);
+      const ogResult = await supabase
+        .from("users")
+        .select("is_og", {
+          count: "exact",
+          head: false,
+        })
+        .eq("is_og", true);
 
       const og =
         ogResult.count || 0;
@@ -299,28 +298,22 @@ function App() {
 
   async function loadLeaderboard() {
     try {
-      const result =
-        await supabase
-          .from("users")
-          .select(
-            "wallet_address, referral_count, referral_earnings"
-          )
-          .order(
-            "referral_count",
-            {
-              ascending: false,
-            }
-          )
-          .limit(10);
+      const result = await supabase
+        .from("users")
+        .select(
+          "wallet_address, referral_count, referral_earnings"
+        )
+        .order("referral_count", {
+          ascending: false,
+        })
+        .limit(10);
 
       if (result.error) {
         console.error(result.error);
         return;
       }
 
-      setLeaderboard(
-        result.data || []
-      );
+      setLeaderboard(result.data || []);
     } catch (error) {
       console.error(error);
     }
@@ -330,15 +323,14 @@ function App() {
     if (!address) return;
 
     try {
-      const result =
-        await supabase
-          .from("users")
-          .select("*")
-          .eq(
-            "wallet_address",
-            address.toLowerCase()
-          )
-          .maybeSingle();
+      const result = await supabase
+        .from("users")
+        .select("*")
+        .eq(
+          "wallet_address",
+          address.toLowerCase()
+        )
+        .maybeSingle();
 
       if (result.error) {
         console.error(result.error);
@@ -347,29 +339,26 @@ function App() {
 
       if (!result.data) return;
 
-      setUser(result.data);
+      const data = result.data;
+
+      setUser(data);
 
       setReferralCount(
-        result.data.referral_count || 0
+        Number(data.referral_count || 0)
       );
 
       setReferralEarnings(
-        Number(
-          result.data.referral_earnings || 0
-        )
+        Number(data.referral_earnings || 0)
       );
 
-      setXUsername(
-        result.data.x_username || ""
-      );
+      setXUsername(data.x_username || "");
 
       setDiscordUsername(
-        result.data.discord_username || ""
+        data.discord_username || ""
       );
 
       setVerificationStatus(
-        result.data.verification_status ||
-          "pending"
+        data.verification_status || "pending"
       );
     } catch (error) {
       console.error(error);
@@ -392,6 +381,50 @@ function App() {
       setWallet(normalized);
       loadUserData(normalized);
     }
+  }, []);
+
+  useEffect(() => {
+    if (!window.ethereum) return;
+
+    function handleAccountsChanged(accounts) {
+      if (!accounts || accounts.length === 0) {
+        setWallet("");
+        setUser(null);
+        localStorage.removeItem(
+          "veyrohood_wallet"
+        );
+        setStatus(
+          "Wallet disconnected."
+        );
+        return;
+      }
+
+      const address =
+        accounts[0].toLowerCase();
+
+      setWallet(address);
+
+      localStorage.setItem(
+        "veyrohood_wallet",
+        address
+      );
+
+      loadUserData(address);
+    }
+
+    window.ethereum.on(
+      "accountsChanged",
+      handleAccountsChanged
+    );
+
+    return () => {
+      if (window.ethereum.removeListener) {
+        window.ethereum.removeListener(
+          "accountsChanged",
+          handleAccountsChanged
+        );
+      }
+    };
   }, []);
 
   async function submitVerification() {
@@ -425,7 +458,7 @@ function App() {
 
     if (!replyLink.trim()) {
       setStatus(
-        "Enter your Reply link."
+        "Enter your Reply Post link."
       );
       return;
     }
@@ -436,20 +469,25 @@ function App() {
         "Submitting verification..."
       );
 
-      const result =
+      const verification =
         await supabase
           .from("verifications")
           .insert({
-            wallet_address: wallet.toLowerCase(),
+            wallet_address:
+              wallet.toLowerCase(),
             x_follow: true,
             discord_join: true,
-            quote_link: quoteLink.trim(),
-            reply_link: replyLink.trim(),
+            quote_link:
+              quoteLink.trim(),
+            reply_link:
+              replyLink.trim(),
             is_verified: false,
           });
 
-      if (result.error) {
-        console.error(result.error);
+      if (verification.error) {
+        console.error(
+          verification.error
+        );
 
         setStatus(
           "Verification submission failed."
@@ -485,6 +523,9 @@ function App() {
       setStatus(
         "Verification submitted successfully."
       );
+
+      await loadStats();
+      await loadLeaderboard();
     } catch (error) {
       console.error(error);
 
@@ -494,8 +535,9 @@ function App() {
     } finally {
       setLoading(false);
     }
-          }
-    function copyReferralLink() {
+  }
+
+  function copyReferralLink() {
     if (!wallet) {
       setStatus(
         "Connect your wallet first."
@@ -506,21 +548,30 @@ function App() {
     const link =
       `${window.location.origin}/?ref=${wallet}`;
 
-    navigator.clipboard
-      .writeText(link)
-      .then(() => {
-        setStatus(
-          "Referral link copied."
-        );
-      })
-      .catch(() => {
-        setStatus(
-          "Could not copy referral link."
-        );
-      });
+    if (
+      navigator.clipboard &&
+      navigator.clipboard.writeText
+    ) {
+      navigator.clipboard
+        .writeText(link)
+        .then(() => {
+          setStatus(
+            "Referral link copied."
+          );
+        })
+        .catch(() => {
+          setStatus(
+            "Could not copy referral link."
+          );
+        });
+    } else {
+      setStatus(
+        "Copy is not supported on this browser."
+      );
+    }
   }
 
-  async function withdraw() {
+  function withdraw() {
     if (!wallet) {
       setStatus(
         "Connect your wallet first."
@@ -528,7 +579,10 @@ function App() {
       return;
     }
 
-    if (referralEarnings < WITHDRAWAL_USD) {
+    if (
+      referralEarnings <
+      WITHDRAWAL_USD
+    ) {
       setStatus(
         "Minimum withdrawal is $2."
       );
@@ -543,29 +597,28 @@ function App() {
   function handleMission(type) {
     if (type === "x") {
       window.open(
-        "https://x.com/VeyroHood",
-        "_blank"
+        X_URL,
+        "_blank",
+        "noopener,noreferrer"
       );
     }
 
     if (type === "discord") {
       window.open(
-        "https://discord.gg/utFuXHYHp",
-        "_blank"
+        DISCORD_URL,
+        "_blank",
+        "noopener,noreferrer"
       );
     }
 
-    if (type === "quote") {
+    if (
+      type === "quote" ||
+      type === "reply"
+    ) {
       window.open(
-        "https://x.com/VeyroHood/status/2095434542094115048",
-        "_blank"
-      );
-    }
-
-    if (type === "reply") {
-      window.open(
-        "https://x.com/VeyroHood/status/2095434542094115048",
-        "_blank"
+        PINNED_POST,
+        "_blank",
+        "noopener,noreferrer"
       );
     }
   }
@@ -585,25 +638,42 @@ function App() {
   return (
     <div className="app">
 
-      <header className="hero">
-        <div className="hero-content">
+      <nav className="navbar">
+        <div className="container nav-inner">
 
-          <div className="badge">
-            VEYROHOOD
+          <a
+            className="logo"
+            href="#top"
+          >
+            VEYRO<span>HOOD</span>
+          </a>
+
+          <div
+            className={`nav-links ${
+              mobileMenuOpen
+                ? "open"
+                : ""
+            }`}
+          >
+            <a href="#missions">
+              Missions
+            </a>
+
+            <a href="#verification">
+              Verification
+            </a>
+
+            <a href="#referrals">
+              Referrals
+            </a>
+
+            <a href="#nft">
+              NFT
+            </a>
           </div>
 
-          <h1>
-            VeyroHood
-          </h1>
-
-          <p className="hero-subtitle">
-            Join the whitelist.
-            Complete the missions.
-            Become an OG.
-          </p>
-
           <button
-            className="primary-button"
+            className="wallet-button"
             onClick={connectWallet}
             disabled={loading}
           >
@@ -612,336 +682,782 @@ function App() {
               : "Connect Wallet"}
           </button>
 
-          <p className="status">
-            {status}
-          </p>
+          <button
+            className="mobile-menu-button"
+            onClick={() =>
+              setMobileMenuOpen(
+                !mobileMenuOpen
+              )
+            }
+            aria-label="Menu"
+          >
+            ☰
+          </button>
+
+        </div>
+      </nav>
+
+      <header
+        className="hero"
+        id="top"
+      >
+
+        <div className="hero-glow glow-one" />
+        <div className="hero-glow glow-two" />
+
+        <div className="container hero-grid">
+
+          <div className="hero-copy">
+
+            <div className="eyebrow">
+              WEB3 • NFT • COMMUNITY
+            </div>
+
+            <h1>
+              Veyro
+              <br />
+              <span>Hood.</span>
+            </h1>
+
+            <p>
+              Join the VeyroHood whitelist,
+              complete the missions,
+              become one of the first
+              1,000 OG members and secure
+              your guaranteed NFT allocation.
+            </p>
+
+            <div className="hero-actions">
+
+              <button
+                className="primary-button"
+                onClick={connectWallet}
+                disabled={loading}
+              >
+                {wallet
+                  ? shortAddress(wallet)
+                  : "Connect Wallet"}
+              </button>
+
+              <a
+                className="secondary-button"
+                href="#missions"
+              >
+                View Missions
+              </a>
+
+            </div>
+
+            <div className="hero-note">
+              {status}
+            </div>
+
+          </div>
+
+          <div className="character-wrap">
+
+            <div className="character-ring" />
+
+            <img
+              className="character"
+              src="/veyrohood-character.jpg"
+              alt="VeyroHood character"
+            />
+
+            <div className="floating-card card-one">
+              <strong>
+                {ogRemaining}
+              </strong>
+              <span>
+                OG SPOTS LEFT
+              </span>
+            </div>
+
+            <div className="floating-card card-two">
+              <strong>
+                {NFT_SUPPLY}
+              </strong>
+              <span>
+                TOTAL NFT SUPPLY
+              </span>
+            </div>
+
+          </div>
 
         </div>
       </header>
 
-      <main className="container">
+      <section className="stats-section">
+        <div className="container stats-grid">
 
-        <section className="stats-grid">
-
-          <div className="stat-card">
+          <div className="stat">
             <strong>
               {stats.joined}
             </strong>
             <span>
-              Joined
+              Members Joined
             </span>
           </div>
 
-          <div className="stat-card">
+          <div className="stat">
+            <strong>
+              {stats.og}
+              {" / "}
+              {OG_LIMIT}
+            </strong>
+            <span>
+              OG Members
+            </span>
+          </div>
+
+          <div className="stat">
             <strong>
               {ogRemaining}
             </strong>
             <span>
-              OG Spots Left
+              OG Spots Remaining
             </span>
           </div>
 
-          <div className="stat-card">
+          <div className="stat">
             <strong>
-              {NFT_SUPPLY}
+              {NFT_SUPPLY.toLocaleString()}
             </strong>
             <span>
               NFT Supply
             </span>
           </div>
 
-        </section>
+        </div>
+      </section>
 
-        <section className="section">
+      <main>
 
-          <h2>
-            Missions
-          </h2>
+        <section
+          className="section"
+          id="missions"
+        >
 
-          <div className="mission-grid">
+          <div className="container">
 
-            <button
-              className="mission-card"
-              onClick={() =>
-                handleMission("x")
-              }
-            >
-              <span>
-                01
-              </span>
-              <strong>
-                Follow VeyroHood on X
-              </strong>
-              <small>
-                Open X
-              </small>
-            </button>
+            <div className="section-heading">
 
-            <button
-              className="mission-card"
-              onClick={() =>
-                handleMission("discord")
-              }
-            >
-              <span>
-                02
-              </span>
-              <strong>
-                Join Discord
-              </strong>
-              <small>
-                Open Discord
-              </small>
-            </button>
+              <h2>
+                Complete
+                <br />
+                The Missions.
+              </h2>
 
-            <button
-              className="mission-card"
-              onClick={() =>
-                handleMission("quote")
-              }
-            >
-              <span>
-                03
-              </span>
-              <strong>
-                Quote the pinned post
-              </strong>
-              <small>
-                Open pinned post
-              </small>
-            </button>
+              <p>
+                Complete all four missions
+                before submitting your
+                verification information.
+              </p>
 
-            <button
-              className="mission-card"
-              onClick={() =>
-                handleMission("reply")
-              }
-            >
-              <span>
-                04
-              </span>
-              <strong>
-                Reply to the pinned post
-              </strong>
-              <small>
-                Open pinned post
-              </small>
-            </button>
+            </div>
+
+            <div className="mission-grid">
+
+              <div className="mission-card">
+
+                <span className="mission-number">
+                  01
+                </span>
+
+                <h3>
+                  Follow VeyroHood
+                </h3>
+
+                <p>
+                  Follow the official
+                  VeyroHood account on X.
+                </p>
+
+                <button
+                  className="mission-button"
+                  onClick={() =>
+                    handleMission("x")
+                  }
+                >
+                  <span>
+                    Open X
+                  </span>
+                  <span>
+                    →
+                  </span>
+                </button>
+
+              </div>
+
+              <div className="mission-card">
+
+                <span className="mission-number">
+                  02
+                </span>
+
+                <h3>
+                  Join Discord
+                </h3>
+
+                <p>
+                  Join the official
+                  VeyroHood Discord community.
+                </p>
+
+                <button
+                  className="mission-button"
+                  onClick={() =>
+                    handleMission(
+                      "discord"
+                    )
+                  }
+                >
+                  <span>
+                    Open Discord
+                  </span>
+                  <span>
+                    →
+                  </span>
+                </button>
+
+              </div>
+
+              <div className="mission-card">
+
+                <span className="mission-number">
+                  03
+                </span>
+
+                <h3>
+                  Quote The Post
+                </h3>
+
+                <p>
+                  Quote the official
+                  pinned VeyroHood post.
+                </p>
+
+                <button
+                  className="mission-button"
+                  onClick={() =>
+                    handleMission(
+                      "quote"
+                    )
+                  }
+                >
+                  <span>
+                    Open Post
+                  </span>
+                  <span>
+                    →
+                  </span>
+                </button>
+
+              </div>
+
+              <div className="mission-card">
+
+                <span className="mission-number">
+                  04
+                </span>
+
+                <h3>
+                  Reply To The Post
+                </h3>
+
+                <p>
+                  Reply to the official
+                  pinned VeyroHood post.
+                </p>
+
+                <button
+                  className="mission-button"
+                  onClick={() =>
+                    handleMission(
+                      "reply"
+                    )
+                  }
+                >
+                  <span>
+                    Open Post
+                  </span>
+                  <span>
+                    →
+                  </span>
+                </button>
+
+              </div>
+
+            </div>
 
           </div>
 
         </section>
-                <section className="section">
 
-          <h2>
-            Verification
-          </h2>
+        <section
+          className="section dark-section"
+          id="verification"
+        >
 
-          <div className="verification-card">
+          <div className="container">
 
-            <p>
-              Submit your mission information
-              for verification.
-            </p>
+            <div className="section-heading">
 
-            <input
-              type="text"
-              placeholder="X username"
-              value={xUsername}
-              onChange={(e) =>
-                setXUsername(e.target.value)
-              }
-            />
+              <h2>
+                Verify
+                <br />
+                Your Entry.
+              </h2>
 
-            <input
-              type="text"
-              placeholder="Discord username"
-              value={discordUsername}
-              onChange={(e) =>
-                setDiscordUsername(
-                  e.target.value
-                )
-              }
-            />
+              <p>
+                Submit your X username,
+                Discord username, quote link
+                and reply link for review.
+              </p>
 
-            <input
-              type="url"
-              placeholder="Quote post link"
-              value={quoteLink}
-              onChange={(e) =>
-                setQuoteLink(e.target.value)
-              }
-            />
+            </div>
 
-            <input
-              type="url"
-              placeholder="Reply post link"
-              value={replyLink}
-              onChange={(e) =>
-                setReplyLink(e.target.value)
-              }
-            />
-
-            <button
-              className="primary-button"
-              onClick={
-                submitVerification
-              }
-              disabled={loading}
-            >
-              Submit Verification
-            </button>
-
-            <p className="verification-status">
-              Status: {verificationStatus}
-            </p>
-
-          </div>
-
-        </section>
-
-        <section className="section">
-
-          <h2>
-            Referral Program
-          </h2>
-
-          <div className="referral-card">
-
-            <p>
-              Earn {REFERRAL_PERCENT}% from
-              qualified referral payments.
-            </p>
-
-            <div className="referral-stats">
+            <div className="verification-panel">
 
               <div>
-                <strong>
-                  {referralCount}
-                </strong>
+
+                <h3>
+                  Verification
+                </h3>
+
+                <p>
+                  Your information will be
+                  linked to your connected
+                  wallet.
+                </p>
+
+                <p>
+                  Current status:
+                  <br />
+                  <strong>
+                    {verificationStatus}
+                  </strong>
+                </p>
+
+              </div>
+
+              <div className="verification-form">
+
+                <input
+                  type="text"
+                  placeholder="X username"
+                  value={xUsername}
+                  onChange={(e) =>
+                    setXUsername(
+                      e.target.value
+                    )
+                  }
+                />
+
+                <input
+                  type="text"
+                  placeholder="Discord username"
+                  value={
+                    discordUsername
+                  }
+                  onChange={(e) =>
+                    setDiscordUsername(
+                      e.target.value
+                    )
+                  }
+                />
+
+                <input
+                  type="url"
+                  placeholder="Quote post link"
+                  value={quoteLink}
+                  onChange={(e) =>
+                    setQuoteLink(
+                      e.target.value
+                    )
+                  }
+                />
+
+                <input
+                  type="url"
+                  placeholder="Reply post link"
+                  value={replyLink}
+                  onChange={(e) =>
+                    setReplyLink(
+                      e.target.value
+                    )
+                  }
+                />
+
+                <button
+                  className="primary-button"
+                  onClick={
+                    submitVerification
+                  }
+                  disabled={loading}
+                >
+                  {loading
+                    ? "Submitting..."
+                    : "Submit Verification"}
+                </button>
+
+                <div className="fee-note">
+                  Verification fee:
+                  {" "}
+                  ${VERIFICATION_USD}
+                  {" "}
+                  worth of native ETH
+                  on Robinhood Chain.
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </section>
+
+        <section
+          className="section"
+          id="referrals"
+        >
+
+          <div className="container">
+
+            <div className="section-heading">
+
+              <h2>
+                Build Your
+                <br />
+                Hood.
+              </h2>
+
+              <p>
+                Invite eligible members through
+                your referral link and earn
+                {` ${REFERRAL_PERCENT}% `}
+                of qualified verification
+                payments.
+              </p>
+
+            </div>
+
+            <div className="referral-dashboard">
+
+              <div className="referral-main">
+
+                <span className="dashboard-label">
+                  YOUR REFERRAL LINK
+                </span>
+
+                <div className="referral-link-box">
+                  {wallet
+                    ? `${window.location.origin}/?ref=${wallet}`
+                    : "Connect wallet to generate your referral link."}
+                </div>
+
+                <button
+                  className="primary-button"
+                  onClick={
+                    copyReferralLink
+                  }
+                >
+                  Copy Referral Link
+                </button>
+
+              </div>
+
+              <div className="referral-stats">
+
+                <div>
+                  <span>
+                    Referrals
+                  </span>
+                  <strong>
+                    {referralCount}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>
+                    Earnings
+                  </span>
+                  <strong>
+                    $
+                    {referralEarnings.toFixed(
+                      2
+                    )}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>
+                    Withdrawal
+                  </span>
+                  <strong>
+                    ${WITHDRAWAL_USD} min
+                  </strong>
+                </div>
+
+                <button
+                  className="withdraw-button"
+                  onClick={withdraw}
+                >
+                  Withdraw Earnings
+                </button>
+
+              </div>
+
+            </div>
+
+            <div className="leaderboard">
+
+              <div className="leaderboard-header">
+
+                <h3>
+                  Referral Leaderboard
+                </h3>
+
+                <span className="live-indicator">
+                  ● LIVE
+                </span>
+
+              </div>
+
+              <div className="leader-row header">
+                <span>
+                  Rank
+                </span>
+
+                <span>
+                  Wallet
+                </span>
+
                 <span>
                   Referrals
                 </span>
               </div>
 
-              <div>
-                <strong>
-                  ${referralEarnings.toFixed(2)}
-                </strong>
-                <span>
-                  Earnings
-                </span>
+              {leaderboard.length === 0 ? (
+                <div className="leader-row">
+                  <span>
+                    —
+                  </span>
+
+                  <span>
+                    No referral data yet.
+                  </span>
+
+                  <span>
+                    0
+                  </span>
+                </div>
+              ) : (
+                leaderboard.map(
+                  (item, index) => (
+                    <div
+                      className="leader-row"
+                      key={
+                        item.wallet_address
+                      }
+                    >
+                      <span>
+                        #{index + 1}
+                      </span>
+
+                      <strong>
+                        {shortAddress(
+                          item.wallet_address
+                        )}
+                      </strong>
+
+                      <span>
+                        {item.referral_count ||
+                          0}
+                      </span>
+                    </div>
+                  )
+                )
+              )}
+
+            </div>
+
+          </div>
+
+        </section>
+
+        <section
+          className="section dark-section"
+          id="nft"
+        >
+
+          <div className="container">
+
+            <div className="allocation">
+
+              <div className="allocation-copy">
+
+                <h2>
+                  10,000
+                  <br />
+                  NFTs.
+                </h2>
+
+                <p>
+                  VeyroHood NFT allocation is
+                  designed around the OG community
+                  first, followed by the remaining
+                  eligible whitelist members.
+                </p>
+
+                <div className="allocation-list">
+
+                  <div>
+                    <strong>
+                      1,000
+                    </strong>
+
+                    <span>
+                      OG GUARANTEED
+                    </span>
+                  </div>
+
+                  <div>
+                    <strong>
+                      9,000
+                    </strong>
+
+                    <span>
+                      ELIGIBLE FCFS
+                    </span>
+                  </div>
+
+                  <div>
+                    <strong>
+                      {nftRemaining.toLocaleString()}
+                    </strong>
+
+                    <span>
+                      ESTIMATED REMAINING
+                    </span>
+                  </div>
+
+                </div>
+
+              </div>
+
+              <div className="allocation-visual">
+
+                <div className="orbit orbit-one" />
+                <div className="orbit orbit-two" />
+
+                <div className="allocation-center">
+
+                  <span>
+                    SUPPLY
+                  </span>
+
+                  <strong>
+                    10K
+                  </strong>
+
+                  <span>
+                    NFTS
+                  </span>
+
+                </div>
+
               </div>
 
             </div>
 
-            <button
-              className="secondary-button"
-              onClick={
-                copyReferralLink
-              }
-            >
-              Copy Referral Link
-            </button>
-
-            <button
-              className="secondary-button"
-              onClick={withdraw}
-            >
-              Withdraw
-            </button>
-
           </div>
 
         </section>
 
         <section className="section">
 
-          <h2>
-            Referral Leaderboard
-          </h2>
+          <div className="container">
 
-          <div className="leaderboard">
+            <div className="section-heading">
 
-            {leaderboard.length === 0 ? (
-              <p>
-                No referral data yet.
-              </p>
-            ) : (
-              leaderboard.map(
-                (item, index) => (
-                  <div
-                    className="leaderboard-row"
-                    key={
-                      item.wallet_address
-                    }
-                  >
-                    <span>
-                      #{index + 1}
-                    </span>
-
-                    <strong>
-                      {shortAddress(
-                        item.wallet_address
-                      )}
-                    </strong>
-
-                    <span>
-                      {item.referral_count || 0}
-                      {" "}referrals
-                    </span>
-                  </div>
-                )
-              )
-            )}
-
-          </div>
-
-        </section>
-
-        <section className="section">
-
-          <h2>
-            NFT Allocation
-          </h2>
-
-          <div className="allocation-card">
-
-            <div>
-              <strong>
-                1,000 OG
-              </strong>
+              <h2>
+                Why
+                <br />
+                VeyroHood?
+              </h2>
 
               <p>
-                First 1,000 eligible OG
-                wallets receive one
-                guaranteed NFT.
+                Early community members get
+                priority access and a guaranteed
+                OG NFT allocation.
               </p>
+
             </div>
 
-            <div>
-              <strong>
-                9,000 FCFS
-              </strong>
+            <div className="faq-grid">
 
-              <p>
-                Remaining NFTs are
-                available to eligible
-                submitted wallets on
-                a first-come,
-                first-served basis.
-              </p>
-            </div>
+              <div className="faq-card">
 
-            <div>
-              <strong>
-                {nftRemaining}
-              </strong>
+                <h3>
+                  What makes an OG?
+                </h3>
 
-              <p>
-                Estimated NFT allocation
-                remaining.
-              </p>
+                <p>
+                  The first 1,000 eligible
+                  members who complete the
+                  required entry process are
+                  designated as OG members.
+                </p>
+
+              </div>
+
+              <div className="faq-card">
+
+                <h3>
+                  How many NFTs are there?
+                </h3>
+
+                <p>
+                  The total VeyroHood NFT
+                  supply is 10,000.
+                </p>
+
+              </div>
+
+              <div className="faq-card">
+
+                <h3>
+                  What happens after the
+                  first 1,000?
+                </h3>
+
+                <p>
+                  The remaining 9,000 NFT
+                  allocation is reserved for
+                  eligible submitted wallets
+                  on a first-come,
+                  first-served basis.
+                </p>
+
+              </div>
+
+              <div className="faq-card">
+
+                <h3>
+                  What is the referral reward?
+                </h3>
+
+                <p>
+                  Qualified referrals receive
+                  a 20% referral allocation from
+                  the verification payment.
+                  Withdrawal begins at $2.
+                </p>
+
+              </div>
+
             </div>
 
           </div>
@@ -950,35 +1466,48 @@ function App() {
 
         <section className="section">
 
-          <h2>
-            Verification Fee
-          </h2>
+          <div className="container">
 
-          <div className="fee-card">
+            <div className="verification-panel">
 
-            <strong>
-              ${VERIFICATION_USD}
-              {" "}worth of native ETH
-            </strong>
+              <div>
 
-            <p>
-              Payment will be made on
-              Robinhood Chain.
-            </p>
+                <h3>
+                  Verification Fee
+                </h3>
 
-            <p>
-              80% goes to the VeyroHood
-              treasury and 20% is
-              allocated to the referrer.
-            </p>
+                <p>
+                  ${VERIFICATION_USD}
+                  {" "}
+                  worth of native ETH on
+                  Robinhood Chain.
+                </p>
 
-            <small>
-              Treasury:
-              {" "}
-              {shortAddress(
-                TREASURY_ADDRESS
-              )}
-            </small>
+              </div>
+
+              <div>
+
+                <p>
+                  80% is allocated to the
+                  VeyroHood treasury.
+                </p>
+
+                <p>
+                  20% is allocated to the
+                  eligible referrer.
+                </p>
+
+                <p>
+                  Treasury:
+                  {" "}
+                  {shortAddress(
+                    TREASURY_ADDRESS
+                  )}
+                </p>
+
+              </div>
+
+            </div>
 
           </div>
 
@@ -986,36 +1515,71 @@ function App() {
 
       </main>
 
-      <footer className="footer">
+      <footer>
 
-        <strong>
-          VeyroHood
-        </strong>
+        <div className="container footer-inner">
 
-        <p>
-          Web3 community • NFT •
-          Whitelist
-        </p>
+          <div>
 
-        <a
-          href="https://x.com/VeyroHood"
-          target="_blank"
-          rel="noreferrer"
-        >
-          X
-        </a>
+            <strong>
+              VeyroHood
+            </strong>
 
-        {" • "}
+            <p>
+              Web3 community • NFT •
+              Whitelist
+            </p>
 
-        <a
-          href="https://discord.gg/utFuXHYHp"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Discord
-        </a>
+          </div>
+
+          <div className="footer-links">
+
+            <a
+              href={X_URL}
+              target="_blank"
+              rel="noreferrer"
+            >
+              X
+            </a>
+
+            <a
+              href={DISCORD_URL}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Discord
+            </a>
+
+            <a
+              href="https://robinhoodchain.blockscout.com"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Explorer
+            </a>
+
+          </div>
+
+        </div>
 
       </footer>
+
+      {status && (
+        <div className="toast">
+          <span>
+            {status}
+          </span>
+
+          <button
+            onClick={() =>
+              setStatus("")
+            }
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
     </div>
   );
