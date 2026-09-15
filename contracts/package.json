@@ -4,7 +4,9 @@
   "version": "1.0.0",
   "scripts": {
     "compile": "hardhat compile",
-    "deploy:mainnet": "hardhat run scripts/deploy.cjs --network robinhood"
+    "test": "hardhat test --network hardhat",
+    "deploy:mainnet": "hardhat run scripts/deploy.cjs --network robinhood",
+    "price:mainnet": "hardhat run scripts/postPrice.cjs --network robinhood"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",

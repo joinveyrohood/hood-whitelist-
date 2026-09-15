@@ -1,0 +1,7 @@
+node_modules
+cache
+artifacts
+out
+lib
+.env
+.DS_Store
